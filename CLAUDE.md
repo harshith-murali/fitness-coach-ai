@@ -4,29 +4,37 @@ This app follows the same **WAT framework** (Workflows, Agents, Tools) and
 hard constraints defined in the parent [`n8n-app/CLAUDE.md`](../CLAUDE.md).
 Read that file first — this one only covers what's specific to this app.
 
-## Status: GAMIFICATION BUILT & VERIFIED / N8N CHAT PATH VERIFIED / create_challenge TOOL NOT YET REACHABLE
+## Status: LIVE IN PRODUCTION — chat coaching fully shipped. create_challenge tool deferred (n8n platform bug, not a config issue).
+
+- **Repo**: https://github.com/harshith-murali/fitness-coach-ai (standalone
+  repo, separate from the parent `n8n-app` repo — this app is git-independent)
+- **Live app**: https://fitness-coach-ai-omega.vercel.app
+- **n8n workflow**: "Fitness Coach", id `ptA1dM7cKD2Vi7Ew`, published and
+  live at `https://harshith1103.app.n8n.cloud/webhook/2a2548b2-d025-430a-b148-2bb9c7b5f29a/chat`
 
 The gamification system (Neon Postgres, XP/levels, streaks, badges, nickname
-leaderboard, workout logging, coach-assigned challenges) is fully built and
-was smoke-tested end-to-end against the live database — see "Gamification
-system" below.
+leaderboard, workout logging) is fully built and smoke-tested end-to-end
+against the live database — see "Gamification system" below.
 
-The n8n workflow ("Fitness Coach", id `ptA1dM7cKD2Vi7Ew`) is live and
-published: Chat Trigger → AI Agent (OpenAI `gpt-5-mini`) → response, with
-Simple Memory wired for cross-turn recall. Both the static shape check and a
-live round-trip test (including a memory-continuity check) passed — see
-`workflows/validate_workflow.md` for the full record, including a bug that
-was found and fixed (env var access is blocked on this n8n instance, which
-broke every chat turn until fixed). `N8N_CHAT_WEBHOOK_URL` is set in
-`frontend/.env.local` to the real production webhook URL.
+The n8n workflow is live and published: Chat Trigger → AI Agent (OpenAI
+`gpt-5-mini`) → response, with Simple Memory wired for cross-turn recall.
+Verified end-to-end in production, not just the raw webhook: a `curl` against
+the deployed frontend's `/api/chat` route returned a correct agent reply.
+Full history of what was checked and fixed along the way (env var access
+being blocked on this n8n instance, a wrong env var name/value in Vercel,
+etc.) is in `workflows/validate_workflow.md`.
 
-**Still open**: the `create_challenge` Tool node points at a placeholder
-URL (`https://REPLACE_WITH_DEPLOYED_APP_URL/api/challenges`) because no
-frontend deployment exists yet to give it a real target. Per the parent
-CLAUDE.md's hard constraint, **do not treat challenge-creation-via-chat as
-ready** until that URL is updated to a real reachable deployment and
-re-tested (steps in `workflows/validate_workflow.md`). The chat/coaching
-path itself is ready to build/test the frontend against now.
+**Deferred**: `create_challenge` (a tool letting the agent register a
+structured challenge mid-conversation) was attempted with two different n8n
+tool node types; both failed at live-execution time with what look like bugs
+in this n8n instance's `@n8n/n8n-nodes-langchain` package install (not
+configuration mistakes — see `workflows/validate_workflow.md`, "What broke",
+for the exact errors and what was ruled out). Removed from the workflow
+rather than ship a tool guaranteed to fail. The agent still proposes
+challenges to the user in plain text per its system prompt — it just doesn't
+register them as structured DB rows yet. Revisit per the steps in
+`workflows/validate_workflow.md` when there's appetite to debug the n8n
+instance itself.
 
 ## What's different from the root `n8n-app/frontend` app
 
@@ -105,21 +113,17 @@ fitness-coach/
 
 ## Next steps (in order)
 
-1. `npm install && npm run dev` inside `frontend/`, test the chat loop
-   locally end-to-end against the now-live webhook (nickname prompt → chat →
-   XP/streak awarding → workout log → leaderboard), including the error case
-   (a bad/unreachable webhook URL should show a real error, not a silent
-   hang — `app/api/chat/route.ts` already handles this).
-2. Decide on a deployment target for this subfolder (new Vercel project, or
-   a path added to the existing `n8n-app/frontend` deployment — ask the
-   user, don't assume) and deploy it.
-3. Once deployed, update the `create_challenge` Tool node's URL (currently
-   `https://REPLACE_WITH_DEPLOYED_APP_URL/api/challenges`) to the real
-   deployed URL via n8n MCP `update_workflow` (`setNodeParameter`, path
-   `/url`), then `publish_workflow` again.
-4. Send a prompt designed to make the agent propose a challenge (e.g. "give
-   me a week-long pushup challenge"), confirm the resulting row appears via
-   `mcp__Neon__run_sql` against project `fragrant-cake-70976363`. This is
-   the one remaining unverified piece — see `workflows/validate_workflow.md`.
-5. Set `DATABASE_URL` and `N8N_CHAT_WEBHOOK_URL` as real environment
-   variables in the deployment, not just `.env.local`.
+Everything through "verified live in production" is done. What's left:
+
+1. **Revisit `create_challenge`** — see `workflows/validate_workflow.md`
+   "To revisit create_challenge later" for the leading candidate
+   (`toolWorkflow` / Execute Workflow Tool routing through a sub-workflow,
+   untested) and what's already been ruled out. Not urgent; the product
+   works without it.
+2. Browser-test the full user loop against the live deployment (nickname
+   prompt → chat → XP/streak awarding → workout log → leaderboard), not just
+   the API routes via curl — `npm run dev` locally against the live
+   `N8N_CHAT_WEBHOOK_URL`, or directly against
+   https://fitness-coach-ai-omega.vercel.app.
+3. If traffic grows, consider whether the `gpt-5-mini` credential ("n8n free
+   OpenAI API credits") has rate/usage limits worth watching.
